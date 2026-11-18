@@ -16,7 +16,7 @@ from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.5"
+APP_VERSION = "0.5.6"
 
 
 def source_id(source):
@@ -84,6 +84,11 @@ def suggested_camera_number(source_name):
 
 def valid_camera_number(value):
     return type(value) is int and 1 <= value <= 48
+
+
+def valid_edl_reel_number(value):
+    """Camera 0 is the app's Unmapped/black assignment and exports as reel 00."""
+    return type(value) is int and 0 <= value <= 48
 
 
 EDL_NAME_LIMIT = 8
@@ -239,8 +244,8 @@ def export_timecode(timecode, compensation_frames=0, offset_hours=0, rate="24"):
 
 def generate_edl(clips, file_path, compensation_frames=0, offset_hours=0, rate="24"):
     for row, clip in enumerate(clips, 1):
-        if not valid_camera_number(clip.get('camera')):
-            raise ValueError(f"Row {row} needs a CuePilot camera number from 1 to 48; 0 means Unmapped.")
+        if not valid_edl_reel_number(clip.get('camera')):
+            raise ValueError(f"Row {row} needs a CuePilot camera number from 0 to 48.")
     with open(file_path, 'w') as edl_file:
         # EDL header
         edl_file.write("TITLE: ATEM Program Output\n")
@@ -290,7 +295,7 @@ def read_edl(file_path):
                 clip = {'src': f"Event {len(clips) + 1}",
                         'start': match.group(3), 'end': match.group(4)}
                 reel = line.split()[1]
-                if reel.isdigit() and valid_camera_number(int(reel)):
+                if reel.isdigit() and valid_edl_reel_number(int(reel)):
                     clip['camera'] = int(reel)
                 clips.append(clip)
             elif line.lstrip().upper().startswith('* FROM CLIP NAME:') and clips:
@@ -1960,9 +1965,12 @@ class ATEMGUI(QWidget):
         if valid_camera_number(camera):
             camera_item.setBackground(QBrush())
             camera_item.setToolTip("")
+        elif camera == 0:
+            camera_item.setBackground(QBrush())
+            camera_item.setToolTip("Unmapped/black assignment; exports as reel 00.")
         else:
             camera_item.setBackground(QBrush(QColor(255, 190, 130)))
-            camera_item.setToolTip("Enter the CuePilot camera number (1–48).")
+            camera_item.setToolTip("Enter a CuePilot camera number (0–48).")
         self.log_table.item(row, 3).setText(display_duration(clip['start'], clip['end'], rate))
         self.updating_log_table = False
 
@@ -1987,7 +1995,7 @@ class ATEMGUI(QWidget):
                     timecode_to_frames(clip[field], rate)
                 except ValueError:
                     invalid_rows.append(row)
-            if not valid_camera_number(clip.get('camera')):
+            if clip.get('camera') is None or not valid_edl_reel_number(clip.get('camera')):
                 unmapped_rows.append(row)
         messages = []
         if invalid_rows:
@@ -1995,7 +2003,7 @@ class ATEMGUI(QWidget):
             messages.append(f"{len(invalid_rows)} invalid timecode(s) in row(s) {rows}. Save Session works; correct orange cells before EDL export.")
         if unmapped_rows:
             rows = ', '.join(map(str, unmapped_rows))
-            messages.append(f"Camera # needed in row(s) {rows} for CuePilot EDL export.")
+            messages.append(f"Invalid camera assignment in row(s) {rows}; enter a number from 0 to 48.")
         if self.detected_rate and self.detected_rate != rate.split()[0]:
             messages.append(f"HyperDeck reported {self.detected_rate} fps; export is set to {rate} fps.")
         self.log_issue_label.setText("⚠ " + " ".join(messages) if messages else "No timecode errors in log")

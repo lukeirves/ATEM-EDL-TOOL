@@ -41,8 +41,8 @@ app = BUNDLE(
     icon='assets/atem-logger.icns',
     bundle_identifier='com.teliotortay.atemlogger',
     info_plist={
-        'CFBundleShortVersionString': '0.5.5',
-        'CFBundleVersion': '0.5.5',
+        'CFBundleShortVersionString': '0.5.6',
+        'CFBundleVersion': '0.5.6',
         'NSLocalNetworkUsageDescription': 'ATEM-EDL-TOOL connects to your ATEM switcher and HyperDeck on the local network to read video inputs and timecode.',
     },
 )
