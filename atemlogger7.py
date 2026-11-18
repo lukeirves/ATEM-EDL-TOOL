@@ -16,7 +16,7 @@ from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.4"
+APP_VERSION = "0.5.5"
 
 
 def source_id(source):
@@ -240,7 +240,7 @@ def export_timecode(timecode, compensation_frames=0, offset_hours=0, rate="24"):
 def generate_edl(clips, file_path, compensation_frames=0, offset_hours=0, rate="24"):
     for row, clip in enumerate(clips, 1):
         if not valid_camera_number(clip.get('camera')):
-            raise ValueError(f"Row {row} needs a CuePilot camera number from 1 to 48.")
+            raise ValueError(f"Row {row} needs a CuePilot camera number from 1 to 48; 0 means Unmapped.")
     with open(file_path, 'w') as edl_file:
         # EDL header
         edl_file.write("TITLE: ATEM Program Output\n")
@@ -832,6 +832,9 @@ class ATEMGUI(QWidget):
 
         self.save_button = QPushButton("Save EDL + CSV now…")
         self.save_button.clicked.connect(self.choose_save_location)
+        self.delete_selected_button = QPushButton("Delete Selected Line(s)")
+        self.delete_selected_button.setEnabled(False)
+        self.delete_selected_button.clicked.connect(self.delete_selected_clips)
         self.import_button = QPushButton("Import EDL…")
         self.import_button.clicked.connect(self.import_edl)
         self.open_session_button = QPushButton("Open Session…")
@@ -844,6 +847,8 @@ class ATEMGUI(QWidget):
 
         self.log_table = QTableWidget(0, 5)
         self.log_table.setHorizontalHeaderLabels(["Source", "Start", "End", "Duration", "Camera #"])
+        self.log_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.log_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.log_table.horizontalHeader().setStretchLastSection(False)
         self.log_table.setColumnWidth(4, 90)
         self.log_table.itemChanged.connect(self.log_item_changed)
@@ -889,6 +894,7 @@ class ATEMGUI(QWidget):
         session_button_layout.addWidget(self.save_session_button)
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.import_button)
+        button_layout.addWidget(self.delete_selected_button)
         button_layout.addWidget(self.save_button)
         # Rebuild the window around an operator header, setup deck, and full-width
         # sequence area. The old layout buried the shot history in a narrow side column.
@@ -990,6 +996,8 @@ class ATEMGUI(QWidget):
         self.has_atem_session = False
         self.clips = []
         self.last_timeline_live_update = 0.0
+        self.last_monitor_timecode = None
+        self.stop_requested = False
         self.refresh_timeline()
         self.updating_log_table = False
         self.detected_rate = None
@@ -1246,6 +1254,7 @@ class ATEMGUI(QWidget):
                        self.compensation_checkbox, self.auto_start_checkbox,
                        self.offset_checkbox, self.fps_combo, self.input_list,
                        self.save_button, self.import_button,
+                       self.delete_selected_button,
                        self.save_session_button, self.open_session_button,
                        self.log_table):
             widget.setEnabled(not locked)
@@ -1254,6 +1263,9 @@ class ATEMGUI(QWidget):
 
     def toggle_monitoring(self):
         if self.is_monitoring:
+            self.stop_requested = True
+            if self.clips and self.last_monitor_timecode:
+                self.finalize_live_clip(self.last_monitor_timecode)
             self.start_button.setText("Stopping…")
             self.start_button.setEnabled(False)
             self.monitor_thread.request_stop()
@@ -1268,6 +1280,9 @@ class ATEMGUI(QWidget):
             self.save_status_label.setText("No export saved yet")
             self.timecode_warning.setText("")
             self.last_rejected_timecode = ""
+            self.last_monitor_timecode = None
+            self.stop_requested = False
+            self.last_timeline_live_update = 0.0
             self.update_video_format("")
             self.stop_event.clear()
             self.monitor_shutdown_complete = False
@@ -1681,8 +1696,13 @@ class ATEMGUI(QWidget):
         log_table = getattr(self, "log_table", None)
         if ((log_table is not None and watched in (log_table, log_table.viewport())
              or watched in getattr(self, "timeline_buttons", ()))
-                and event.type() == QEvent.Type.KeyPress
-                and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)):
+                and event.type() == QEvent.Type.KeyPress):
+            if (log_table is not None and watched in (log_table, log_table.viewport())
+                    and event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace)):
+                self.delete_selected_clips()
+                return True
+            if event.key() not in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                return super().eventFilter(watched, event)
             row = self.log_table.currentRow()
             if row >= 0:
                 step = -1 if event.key() == Qt.Key.Key_Left else 1
@@ -1691,6 +1711,8 @@ class ATEMGUI(QWidget):
         return super().eventFilter(watched, event)
 
     def select_timeline_from_log(self):
+        self.delete_selected_button.setEnabled(
+            bool(self.log_table.selectionModel().selectedRows()))
         if self.suppress_timeline_selection:
             return
         row = self.log_table.currentRow()
@@ -1709,19 +1731,84 @@ class ATEMGUI(QWidget):
             self.style_timeline_button(button, color, index == row)
 
     def update_live_end(self, end):
-        if not self.clips:
+        if not self.clips or self.stop_requested:
             return
         row = len(self.clips) - 1
-        self.updating_log_table = True
+        if self.is_likely_reset_timecode(self.clips[row]['start'], end):
+            return
         self.clips[row]['end'] = end
+        now = time.monotonic()
+        if now - self.last_timeline_live_update < 0.5:
+            return
+        self.last_timeline_live_update = now
+        self.updating_log_table = True
         self.log_table.item(row, 2).setText(end)
         self.updating_log_table = False
         self.validate_log_row(row)
         self.refresh_log_issue_summary()
-        now = time.monotonic()
-        if now - self.last_timeline_live_update >= 0.2:
-            self.update_timeline_clip(row)
-            self.last_timeline_live_update = now
+        self.update_timeline_clip(row)
+
+    def is_likely_reset_timecode(self, start, end):
+        if end.replace(';', ':') != "00:00:00:00":
+            return False
+        rate = self.fps_combo.currentData()
+        try:
+            start_frame = timecode_to_frames(start, rate)
+        except ValueError:
+            return False
+        day = frames_per_day(rate)
+        duration = (0 - start_frame) % day
+        return duration > TIMECODE_RATES[rate][0] * 6 * 60 * 60
+
+    def finalize_live_clip(self, end):
+        row = len(self.clips) - 1
+        if row < 0 or self.is_likely_reset_timecode(self.clips[row]['start'], end):
+            return
+        try:
+            timecode_to_frames(end, self.fps_combo.currentData())
+        except ValueError:
+            return
+        self.clips[row]['end'] = end
+        self.updating_log_table = True
+        self.log_table.item(row, 2).setText(end)
+        self.updating_log_table = False
+        self.validate_log_row(row)
+        self.refresh_log_issue_summary()
+        self.update_timeline_clip(row)
+
+    def delete_selected_clips(self):
+        rows = sorted({index.row() for index in self.log_table.selectionModel().selectedRows()})
+        if not rows:
+            return
+        message = QMessageBox(self)
+        message.setWindowTitle("Delete selected clips?")
+        message.setIcon(QMessageBox.Icon.Warning)
+        message.setText(f"Delete {len(rows)} selected clip(s) from this log?")
+        message.setInformativeText("This removes the selected lines from the current session.")
+        delete_button = message.addButton("Delete", QMessageBox.ButtonRole.DestructiveRole)
+        cancel_button = message.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        message.setDefaultButton(cancel_button)
+        message.exec()
+        if message.clickedButton() is not delete_button:
+            return
+
+        removed = set(rows)
+        new_selection = min(rows[0], len(self.clips) - len(rows) - 1)
+        self.suppress_timeline_selection = True
+        try:
+            self.clips = [clip for index, clip in enumerate(self.clips) if index not in removed]
+            self.updating_log_table = True
+            self.log_table.setRowCount(0)
+            self.updating_log_table = False
+            for clip in self.clips:
+                self.add_log_row(clip)
+            if 0 <= new_selection < len(self.clips):
+                self.log_table.selectRow(new_selection)
+        finally:
+            self.updating_log_table = False
+            self.suppress_timeline_selection = False
+        self.refresh_timeline()
+        self.refresh_log_issue_summary()
 
     def log_item_changed(self, item):
         if self.updating_log_table or item.row() >= len(self.clips) or item.column() == 3:
@@ -1915,6 +2002,10 @@ class ATEMGUI(QWidget):
         self.log_issue_label.setStyleSheet("color: #c47f00; font-weight: bold;" if messages else "")
 
     def update_timecode(self, timecode):
+        if (self.sender() is self.monitor_thread and self.is_monitoring
+                and not self.stop_requested):
+            if not self.clips or not self.is_likely_reset_timecode(self.clips[-1]['start'], timecode):
+                self.last_monitor_timecode = timecode
         self.timecode_display.setText(timecode)
         self.refresh_timecode_warning()
 
