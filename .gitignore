@@ -1,0 +1,9 @@
+.venv/
+.build-venv/
+.pyinstaller/
+build/
+dist/
+ATEM Logger.spec
+__pycache__/
+.DS_Store
+ok-cuepilot*.edl
