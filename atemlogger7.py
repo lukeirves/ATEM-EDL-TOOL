@@ -16,11 +16,13 @@ from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.8"
+APP_VERSION = "0.5.9"
 
 
 class CollapsibleSection(QWidget):
     """A titled panel with a disclosure arrow and a truly collapsing body."""
+    expandedChanged = pyqtSignal(bool)
+
     def __init__(self, title, body, parent=None):
         super().__init__(parent)
         self.setObjectName("collapsibleSection")
@@ -46,6 +48,7 @@ class CollapsibleSection(QWidget):
         self.body.setVisible(expanded)
         self.setMaximumHeight(16777215 if expanded else self.toggle.sizeHint().height() + 4)
         self.updateGeometry()
+        self.expandedChanged.emit(expanded)
 
 
 def source_id(source):
@@ -899,8 +902,8 @@ class ATEMGUI(QWidget):
         self.timeline_scroll.setWidgetResizable(False)
         self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.timeline_scroll.setMinimumHeight(84)
-        self.timeline_scroll.setMaximumHeight(120)
+        self.timeline_scroll.setMinimumHeight(132)
+        self.timeline_scroll.setMaximumHeight(154)
         self.timeline_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.timeline_content = QWidget()
         self.timeline_content_layout = QVBoxLayout(self.timeline_content)
@@ -1029,7 +1032,11 @@ class ATEMGUI(QWidget):
         self.content_splitter.setStretchFactor(0, 0)
         self.content_splitter.setStretchFactor(1, 1)
         self.content_splitter.setStretchFactor(2, 0)
-        self.content_splitter.setSizes([116, 360, 112])
+        self.content_splitter.setSizes([116, 330, 158])
+        settings_section.expandedChanged.connect(
+            lambda expanded: self.resize_content_sections(settings_section, timeline_section, expanded, True))
+        timeline_section.expandedChanged.connect(
+            lambda expanded: self.resize_content_sections(settings_section, timeline_section, expanded, False))
         self.main_splitter = main_splitter
         self.layout.addWidget(header)
         self.layout.addWidget(self.content_splitter, 1)
@@ -1108,6 +1115,27 @@ class ATEMGUI(QWidget):
                         min(max(self.height(), self.minimumHeight()), available.height()))
             if not available.intersects(self.frameGeometry()):
                 self.move(available.topLeft())
+
+    def resize_content_sections(self, settings_section, timeline_section, expanded, settings_changed):
+        """Give space released by a collapsed panel to the main patch/log row."""
+        section_index = 0 if settings_changed else 2
+        section = settings_section if settings_changed else timeline_section
+
+        def apply_sizes():
+            sizes = self.content_splitter.sizes()
+            total = sum(sizes)
+            if total <= 0:
+                return
+            target = (section.sizeHint().height() if expanded
+                      else section.toggle.sizeHint().height() + 8)
+            delta = target - sizes[section_index]
+            sizes[section_index] = target
+            sizes[1] = max(1, sizes[1] - delta)
+            if sum(sizes) != total:
+                sizes[1] += total - sum(sizes)
+            self.content_splitter.setSizes(sizes)
+
+        QTimer.singleShot(0, apply_sizes)
 
     def connect_to_atem(self):
         if self.has_atem_session or self.atem_connected:
