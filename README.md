@@ -1,5 +1,8 @@
 # ATEM-EDL-TOOL
 
+<img width="1201" height="1134" alt="Screenshot 2026-11-18 at 6 03 26 PM" src="https://github.com/user-attachments/assets/db3fc3d6-8ab9-4167-941b-4ded3e246836" />
+
+
 **ATEM-EDL-TOOL** is a powerful and intuitive tool designed for video production professionals. It allows you to track ATEM video inputs and capture HyperDeck timecodes in real-time. The software automatically generates logs and EDL (Edit Decision List) files, providing detailed information for every cut made during production.
 
 ## Features
