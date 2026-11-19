@@ -16,7 +16,7 @@ from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.9"
+APP_VERSION = "1.0.1"
 
 
 class CollapsibleSection(QWidget):
