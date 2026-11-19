@@ -10,13 +10,13 @@ from PyATEMMax import ATEMMax
 import socket
 import threading
 from PyQt6.QtCore import QThread, QTimer, QSettings, pyqtSignal, Qt, QEvent, QPropertyAnimation, QEasingCurve
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QMessageBox, QGroupBox, QTableWidget, QTableWidgetItem, QFrame, QCheckBox, QSpinBox, QComboBox, QScrollArea, QLCDNumber
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSplitter, QLabel, QLineEdit, QPushButton, QFileDialog, QMessageBox, QGroupBox, QTableWidget, QTableWidgetItem, QFrame, QCheckBox, QSpinBox, QComboBox, QScrollArea, QLCDNumber
 from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.6"
+APP_VERSION = "0.5.7"
 
 
 def source_id(source):
@@ -716,10 +716,13 @@ class ATEMGUI(QWidget):
         super().__init__()
         self.settings = QSettings("TelioTortay", "ATEM Logger")
         self.setWindowTitle(f"ATEM-EDL-TOOL v{APP_VERSION}")
-        self.setGeometry(100, 100, 1200, 800)
+        # Keep the default footprint modest and let the operator resize the
+        # window freely on laptop displays.
+        self.setGeometry(100, 100, 900, 620)
+        self.setMinimumSize(680, 440)
         self.layout = QVBoxLayout()
-        self.layout.setContentsMargins(16, 14, 16, 16)
-        self.layout.setSpacing(12)
+        self.layout.setContentsMargins(10, 8, 10, 10)
+        self.layout.setSpacing(7)
 
         self.input_groupbox = QGroupBox("Video Inputs")
         self.input_layout = QVBoxLayout()
@@ -731,12 +734,12 @@ class ATEMGUI(QWidget):
         self.timecode_frame_layout.setContentsMargins(14, 14, 14, 14)
         self.timecode_display = RetroTimecodeDisplay("00:00:00:00")
         self.timecode_display.setObjectName("timecodeDisplay")
-        self.timecode_display.setMinimumWidth(330)
-        self.timecode_display.setFixedHeight(70)
+        self.timecode_display.setMinimumWidth(150)
+        self.timecode_display.setFixedHeight(60)
         self.detected_fps_label = QLabel("FPS: —")
         self.detected_fps_label.setObjectName("detectedFpsLabel")
-        self.detected_fps_label.setFixedWidth(116)
-        self.detected_fps_label.setFixedHeight(70)
+        self.detected_fps_label.setFixedWidth(82)
+        self.detected_fps_label.setFixedHeight(60)
         self.detected_fps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.detected_fps_label.setToolTip("Frame rate reported by the HyperDeck video format")
         timecode_line = QHBoxLayout()
@@ -758,8 +761,10 @@ class ATEMGUI(QWidget):
         self.input_list = QTableWidget(0, 5)
         self.input_list.setHorizontalHeaderLabels(["Input", "ATEM name", "Override", "Custom name", "CuePilot #"])
         self.input_list.horizontalHeader().setStretchLastSection(False)
-        for column, width in enumerate((80, 90, 70, 130, 90)):
+        for column, width in enumerate((56, 84, 64, 110, 76)):
             self.input_list.setColumnWidth(column, width)
+        self.input_list.setMinimumHeight(80)
+        self.input_list.setMinimumHeight(80)
         self.input_layout.addWidget(self.input_list)
         self.input_rows = {}
 
@@ -860,14 +865,12 @@ class ATEMGUI(QWidget):
         self.log_table.itemSelectionChanged.connect(self.select_timeline_from_log)
         self.log_table.installEventFilter(self)
         self.log_table.viewport().installEventFilter(self)
-        self.timeline_title = QLabel("SHOT SEQUENCE")
-        self.timeline_title.setObjectName("sectionTitle")
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setWidgetResizable(False)
         self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.timeline_scroll.setMinimumHeight(132)
-        self.timeline_scroll.setMaximumHeight(150)
+        self.timeline_scroll.setMinimumHeight(84)
+        self.timeline_scroll.setMaximumHeight(120)
         self.timeline_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.timeline_content = QWidget()
         self.timeline_content_layout = QVBoxLayout(self.timeline_content)
@@ -901,19 +904,46 @@ class ATEMGUI(QWidget):
         button_layout.addWidget(self.import_button)
         button_layout.addWidget(self.delete_selected_button)
         button_layout.addWidget(self.save_button)
-        # Rebuild the window around an operator header, setup deck, and full-width
-        # sequence area. The old layout buried the shot history in a narrow side column.
-        self.right_layout.removeWidget(self.save_status_label)
-        self.right_layout.removeWidget(self.log_issue_label)
+        # Reflow setup into a compact, collapsible strip below the header.
+        while self.right_layout.count():
+            item = self.right_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        settings_grid = QGridLayout()
+        settings_grid.setContentsMargins(10, 7, 10, 7)
+        settings_grid.setHorizontalSpacing(10)
+        settings_grid.setVerticalSpacing(4)
+        settings_grid.addWidget(self.ip_label, 0, 0)
+        settings_grid.addWidget(self.ip_input, 1, 0)
+        settings_grid.addWidget(self.hyperdeck_ip_label, 0, 1)
+        settings_grid.addWidget(self.hyperdeck_ip_input, 1, 1)
+        settings_grid.addWidget(self.frames_label, 0, 2)
+        settings_grid.addWidget(self.frames_input, 1, 2)
+        settings_grid.addWidget(self.fps_label, 0, 3)
+        settings_grid.addWidget(self.fps_combo, 1, 3)
+        settings_grid.addWidget(self.auto_start_checkbox, 2, 0, 1, 2)
+        settings_grid.addWidget(self.compensation_checkbox, 2, 2)
+        settings_grid.addWidget(self.offset_checkbox, 2, 3)
+        settings_grid.addWidget(self.current_input_label, 3, 0, 1, 3)
+        settings_grid.addWidget(self.offset_hours, 3, 3)
+        for column in range(4):
+            settings_grid.setColumnStretch(column, 1)
         self.input_groupbox.setTitle("INPUT PATCH  /  CUEPILOT CAMERA MAP")
         self.input_groupbox.setObjectName("panel")
-        self.input_groupbox.setMinimumHeight(250)
-        self.input_groupbox.setMaximumHeight(470)
+        self.input_groupbox.setCheckable(True)
+        self.input_groupbox.setChecked(True)
+        self.input_groupbox.setMinimumWidth(0)
+        self.input_groupbox.toggled.connect(
+            lambda expanded: [self.input_layout.itemAt(i).widget().setVisible(expanded)
+                              for i in range(self.input_layout.count())
+                              if self.input_layout.itemAt(i).widget() is not None]
+        )
 
         header = QFrame()
         header.setObjectName("operatorHeader")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 10, 16, 10)
+        header_layout.setContentsMargins(12, 7, 12, 7)
         identity = QVBoxLayout()
         brand = QLabel("ATEM-EDL-TOOL")
         brand.setObjectName("brand")
@@ -933,44 +963,76 @@ class ATEMGUI(QWidget):
         connection_actions.addWidget(self.start_button)
         connection_box.addLayout(connection_actions)
         header_layout.addLayout(connection_box, 2)
-        self.layout.addWidget(header)
 
-        setup_row = QHBoxLayout()
-        setup_row.setSpacing(12)
-        setup_row.addWidget(self.input_groupbox, 6)
         settings_panel = QGroupBox("SWITCHER / TIMECODE SETUP")
         settings_panel.setObjectName("panel")
-        settings_panel.setLayout(self.right_layout)
-        settings_panel.setMaximumHeight(470)
-        setup_row.addWidget(settings_panel, 5)
-        self.layout.addLayout(setup_row)
+        settings_panel.setLayout(settings_grid)
+        settings_panel.setCheckable(True)
+        settings_panel.setChecked(True)
+        settings_panel.toggled.connect(
+            lambda expanded: [settings_grid.itemAt(i).widget().setVisible(expanded)
+                              for i in range(settings_grid.count())
+                              if settings_grid.itemAt(i).widget() is not None]
+        )
 
-        sequence_panel = QFrame()
-        sequence_panel.setObjectName("sequencePanel")
-        sequence_layout = QVBoxLayout(sequence_panel)
-        sequence_layout.setContentsMargins(14, 10, 14, 12)
-        sequence_heading = QHBoxLayout()
-        sequence_heading.addWidget(self.timeline_title)
-        sequence_heading.addStretch(1)
-        sequence_heading.addWidget(self.save_status_label)
-        sequence_layout.addLayout(sequence_heading)
-        sequence_layout.addWidget(self.timeline_scroll)
-        sequence_layout.addWidget(self.log_issue_label)
-        log_heading = QLabel("CUT LOG  /  EDITABLE SOURCE + TIMECODE")
-        log_heading.setObjectName("sectionTitle")
-        sequence_layout.addWidget(log_heading)
-        self.log_table.setMinimumHeight(180)
-        sequence_layout.addWidget(self.log_table, 1)
-        sequence_layout.addLayout(session_button_layout)
-        sequence_layout.addLayout(button_layout)
-        self.layout.addWidget(sequence_panel, 1)
+        log_panel = QGroupBox("CUT LOG  /  EDITABLE SOURCE + TIMECODE")
+        log_panel.setObjectName("panel")
+        log_panel.setCheckable(True)
+        log_panel.setChecked(True)
+        log_panel.setMinimumWidth(0)
+        log_contents = QWidget()
+        log_layout = QVBoxLayout(log_contents)
+        log_layout.setContentsMargins(8, 5, 8, 8)
+        log_layout.setSpacing(5)
+        log_layout.addWidget(self.save_status_label)
+        log_layout.addWidget(self.log_issue_label)
+        self.log_table.setMinimumHeight(72)
+        log_layout.addWidget(self.log_table, 1)
+        log_layout.addLayout(session_button_layout)
+        log_layout.addLayout(button_layout)
+        log_panel_layout = QVBoxLayout(log_panel)
+        log_panel_layout.setContentsMargins(7, 5, 7, 7)
+        log_panel_layout.addWidget(log_contents)
+        log_panel.toggled.connect(log_contents.setVisible)
+
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_splitter.setChildrenCollapsible(True)
+        main_splitter.setHandleWidth(6)
+        main_splitter.addWidget(self.input_groupbox)
+        main_splitter.addWidget(log_panel)
+        main_splitter.setStretchFactor(0, 1)
+        main_splitter.setStretchFactor(1, 1)
+        main_splitter.setSizes([440, 540])
+
+        timeline_panel = QGroupBox("SHOT SEQUENCE")
+        timeline_panel.setObjectName("panel")
+        timeline_panel.setCheckable(True)
+        timeline_panel.setChecked(True)
+        timeline_layout = QVBoxLayout(timeline_panel)
+        timeline_layout.setContentsMargins(8, 4, 8, 6)
+        timeline_layout.addWidget(self.timeline_scroll)
+        timeline_panel.toggled.connect(self.timeline_scroll.setVisible)
+
+        self.content_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.content_splitter.setChildrenCollapsible(True)
+        self.content_splitter.setHandleWidth(6)
+        self.content_splitter.addWidget(settings_panel)
+        self.content_splitter.addWidget(main_splitter)
+        self.content_splitter.addWidget(timeline_panel)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 1)
+        self.content_splitter.setStretchFactor(2, 0)
+        self.content_splitter.setSizes([116, 360, 112])
+        self.main_splitter = main_splitter
+        self.layout.addWidget(header)
+        self.layout.addWidget(self.content_splitter, 1)
 
         self.setStyleSheet("""
             QWidget { background: #181a1c; color: #d9dcdf; font-size: 12px; }
             QLabel, QCheckBox { background: transparent; }
             QFrame#operatorHeader { background: #0d0f10; border: 1px solid #33383c; border-radius: 7px; }
-            QFrame#sequencePanel, QGroupBox#panel { background: #202326; border: 1px solid #393e42; border-radius: 7px; }
-            QGroupBox { margin-top: 14px; padding: 12px 8px 8px; font-weight: bold; color: #c7cbd0; }
+            QGroupBox#panel { background: #202326; border: 1px solid #393e42; border-radius: 7px; }
+            QGroupBox { margin-top: 12px; padding: 9px 7px 7px; font-weight: bold; color: #c7cbd0; }
             QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #00dce8; }
             QLabel#brand { color: #f1f2f3; font-size: 20px; font-weight: bold; letter-spacing: 2px; }
             QLabel#subtitle, QLabel#sectionTitle { color: #00dce8; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
@@ -984,6 +1046,8 @@ class ATEMGUI(QWidget):
             QHeaderView::section { background: #303438; color: #e1e3e5; padding: 6px; border: 0; border-right: 1px solid #45494d; font-weight: bold; }
             QScrollBar:horizontal { background: #111315; height: 13px; margin: 0; }
             QScrollBar::handle:horizontal { background: #646a70; min-width: 28px; border-radius: 5px; }
+            QSplitter::handle { background: #343a3e; }
+            QSplitter::handle:hover { background: #00aab5; }
         """)
 
         self.setLayout(self.layout)
@@ -1023,6 +1087,19 @@ class ATEMGUI(QWidget):
         saved_geometry = self.settings.value("window_geometry")
         if saved_geometry is not None:
             self.restoreGeometry(saved_geometry)
+        splitter_state = self.settings.value("layout_splitter_state")
+        if splitter_state is not None:
+            self.content_splitter.restoreState(splitter_state)
+        main_splitter_state = self.settings.value("main_splitter_state")
+        if main_splitter_state is not None:
+            self.main_splitter.restoreState(main_splitter_state)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            self.resize(min(max(self.width(), self.minimumWidth()), available.width()),
+                        min(max(self.height(), self.minimumHeight()), available.height()))
+            if not available.intersects(self.frameGeometry()):
+                self.move(available.topLeft())
 
     def connect_to_atem(self):
         if self.has_atem_session or self.atem_connected:
@@ -2074,6 +2151,8 @@ class ATEMGUI(QWidget):
             self.preview_thread.wait(3500)
         self.connect_timer.stop()
         self.settings.setValue("window_geometry", self.saveGeometry())
+        self.settings.setValue("layout_splitter_state", self.content_splitter.saveState())
+        self.settings.setValue("main_splitter_state", self.main_splitter.saveState())
         self.settings.sync()
         event.accept()
 

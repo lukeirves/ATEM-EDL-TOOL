@@ -18,6 +18,7 @@
 - **Incoming FPS Warning**: Flags timecodes whose frame number is invalid for the selected FPS, including drop-frame separator mismatches. Invalid cells are highlighted for correction.
 - **Detected HyperDeck FPS**: Shows the frame rate reported by the HyperDeck video format beside the live timecode and warns if it differs from the selected export rate.
 - **Stable Live Display**: Keeps the monospace timecode fixed in place while it rolls, and scrolls the cut log to each newly recorded row.
+- **Compact resizable workspace**: Keeps settings below the header, puts the input patch beside the cut log, and leaves the shot timeline at the bottom. Drag the splitters to resize the sections or collapse them from their headings.
 - **Export Timecode Offset**: Optionally shift exported timecodes by a signed number of hours without changing the recorded log.
 - **Connection and Session Controls**: Remembers both IP addresses, shows ATEM connection status, and locks editing and export while armed or recording.
 - **Frame Rate Selection**: Supports 23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, and 60 fps, with drop-frame and non-drop-frame choices at 29.97 and 59.94.
@@ -41,6 +42,10 @@ Follow [BUILDING.md](BUILDING.md) after each code change. Install Python 3.12, t
 For a Developer ID signed build, set `ATEMLOGGER_CODESIGN_IDENTITY` to the installed **Developer ID Application** certificate before running the build script. It packages a ZIP to share instead of the bare `.app` bundle. Developer ID signing does not notarize the app; notarization requires a separate Apple notary submission.
 
 On another Mac, extract the ZIP, move **ATEM-EDL-TOOL.app** to **Applications**, and open it. If macOS blocks the first launch, try opening the app once, then go to **System Settings → Privacy & Security → Open Anyway**. If the approval was cancelled, repeat this process. If the app still bounces and closes, launch `/Applications/ATEM-EDL-TOOL.app/Contents/MacOS/ATEM-EDL-TOOL` in Terminal and capture the error output for diagnosis.
+
+## Build the Windows app
+
+On Windows with 64-bit Python 3.12, run `build-windows.ps1` in PowerShell. See [BUILDING-WINDOWS.md](BUILDING-WINDOWS.md) for the exact steps and checks. It produces `dist\ATEM-EDL-TOOL-Windows-x64.zip` containing the portable Windows x64 app. Windows builds must run on Windows; PyInstaller does not cross-compile them from macOS.
 
 After pressing **Stop**, click **Save EDL + CSV now** to export the completed log. The app shows the saved path or a save error below the button. Select the correct frame rate before logging; durations, frame compensation, and exports use that setting. The initial default is 24 fps. The app remembers the frame rate, IP addresses, frame compensation, auto-start choice, export offset, custom input names, last save location, and window size.
 
