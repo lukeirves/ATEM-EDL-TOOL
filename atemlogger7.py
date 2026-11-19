@@ -10,13 +10,42 @@ from PyATEMMax import ATEMMax
 import socket
 import threading
 from PyQt6.QtCore import QThread, QTimer, QSettings, pyqtSignal, Qt, QEvent, QPropertyAnimation, QEasingCurve
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSplitter, QLabel, QLineEdit, QPushButton, QFileDialog, QMessageBox, QGroupBox, QTableWidget, QTableWidgetItem, QFrame, QCheckBox, QSpinBox, QComboBox, QScrollArea, QLCDNumber
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSplitter, QLabel, QLineEdit, QPushButton, QToolButton, QFileDialog, QMessageBox, QGroupBox, QTableWidget, QTableWidgetItem, QFrame, QCheckBox, QSpinBox, QComboBox, QScrollArea, QLCDNumber, QSizePolicy
 from PyQt6.QtGui import QColor, QBrush, QFontDatabase, QPalette, QPainter, QPen
 
 # Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("ATEMLogger")
-APP_VERSION = "0.5.7"
+APP_VERSION = "0.5.8"
+
+
+class CollapsibleSection(QWidget):
+    """A titled panel with a disclosure arrow and a truly collapsing body."""
+    def __init__(self, title, body, parent=None):
+        super().__init__(parent)
+        self.setObjectName("collapsibleSection")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.toggle = QToolButton()
+        self.toggle.setObjectName("sectionToggle")
+        self.toggle.setText(title)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(Qt.ArrowType.DownArrow)
+        self.toggle.setCheckable(True)
+        self.toggle.setChecked(True)
+        self.toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.toggle)
+        self.body = body
+        layout.addWidget(body, 1)
+        self.toggle.toggled.connect(self.set_expanded)
+
+    def set_expanded(self, expanded):
+        self.toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self.body.setVisible(expanded)
+        self.setMaximumHeight(16777215 if expanded else self.toggle.sizeHint().height() + 4)
+        self.updateGeometry()
 
 
 def source_id(source):
@@ -724,7 +753,8 @@ class ATEMGUI(QWidget):
         self.layout.setContentsMargins(10, 8, 10, 10)
         self.layout.setSpacing(7)
 
-        self.input_groupbox = QGroupBox("Video Inputs")
+        self.input_groupbox = QFrame()
+        self.input_groupbox.setObjectName("panel")
         self.input_layout = QVBoxLayout()
 
         # Timecode box with green border by default
@@ -929,16 +959,8 @@ class ATEMGUI(QWidget):
         settings_grid.addWidget(self.offset_hours, 3, 3)
         for column in range(4):
             settings_grid.setColumnStretch(column, 1)
-        self.input_groupbox.setTitle("INPUT PATCH  /  CUEPILOT CAMERA MAP")
-        self.input_groupbox.setObjectName("panel")
-        self.input_groupbox.setCheckable(True)
-        self.input_groupbox.setChecked(True)
         self.input_groupbox.setMinimumWidth(0)
-        self.input_groupbox.toggled.connect(
-            lambda expanded: [self.input_layout.itemAt(i).widget().setVisible(expanded)
-                              for i in range(self.input_layout.count())
-                              if self.input_layout.itemAt(i).widget() is not None]
-        )
+        input_section = CollapsibleSection("INPUT PATCH  /  CUEPILOT CAMERA MAP", self.input_groupbox)
 
         header = QFrame()
         header.setObjectName("operatorHeader")
@@ -964,22 +986,11 @@ class ATEMGUI(QWidget):
         connection_box.addLayout(connection_actions)
         header_layout.addLayout(connection_box, 2)
 
-        settings_panel = QGroupBox("SWITCHER / TIMECODE SETUP")
+        settings_panel = QFrame()
         settings_panel.setObjectName("panel")
         settings_panel.setLayout(settings_grid)
-        settings_panel.setCheckable(True)
-        settings_panel.setChecked(True)
-        settings_panel.toggled.connect(
-            lambda expanded: [settings_grid.itemAt(i).widget().setVisible(expanded)
-                              for i in range(settings_grid.count())
-                              if settings_grid.itemAt(i).widget() is not None]
-        )
+        settings_section = CollapsibleSection("SWITCHER / TIMECODE SETUP", settings_panel)
 
-        log_panel = QGroupBox("CUT LOG  /  EDITABLE SOURCE + TIMECODE")
-        log_panel.setObjectName("panel")
-        log_panel.setCheckable(True)
-        log_panel.setChecked(True)
-        log_panel.setMinimumWidth(0)
         log_contents = QWidget()
         log_layout = QVBoxLayout(log_contents)
         log_layout.setContentsMargins(8, 5, 8, 8)
@@ -990,35 +1001,31 @@ class ATEMGUI(QWidget):
         log_layout.addWidget(self.log_table, 1)
         log_layout.addLayout(session_button_layout)
         log_layout.addLayout(button_layout)
-        log_panel_layout = QVBoxLayout(log_panel)
-        log_panel_layout.setContentsMargins(7, 5, 7, 7)
-        log_panel_layout.addWidget(log_contents)
-        log_panel.toggled.connect(log_contents.setVisible)
+        log_section = CollapsibleSection("CUT LOG  /  EDITABLE SOURCE + TIMECODE", log_contents)
+        log_section.setMinimumWidth(0)
 
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.setChildrenCollapsible(True)
         main_splitter.setHandleWidth(6)
-        main_splitter.addWidget(self.input_groupbox)
-        main_splitter.addWidget(log_panel)
+        main_splitter.addWidget(input_section)
+        main_splitter.addWidget(log_section)
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 1)
         main_splitter.setSizes([440, 540])
 
-        timeline_panel = QGroupBox("SHOT SEQUENCE")
+        timeline_panel = QFrame()
         timeline_panel.setObjectName("panel")
-        timeline_panel.setCheckable(True)
-        timeline_panel.setChecked(True)
         timeline_layout = QVBoxLayout(timeline_panel)
         timeline_layout.setContentsMargins(8, 4, 8, 6)
         timeline_layout.addWidget(self.timeline_scroll)
-        timeline_panel.toggled.connect(self.timeline_scroll.setVisible)
+        timeline_section = CollapsibleSection("SHOT SEQUENCE", timeline_panel)
 
         self.content_splitter = QSplitter(Qt.Orientation.Vertical)
         self.content_splitter.setChildrenCollapsible(True)
         self.content_splitter.setHandleWidth(6)
-        self.content_splitter.addWidget(settings_panel)
+        self.content_splitter.addWidget(settings_section)
         self.content_splitter.addWidget(main_splitter)
-        self.content_splitter.addWidget(timeline_panel)
+        self.content_splitter.addWidget(timeline_section)
         self.content_splitter.setStretchFactor(0, 0)
         self.content_splitter.setStretchFactor(1, 1)
         self.content_splitter.setStretchFactor(2, 0)
@@ -1031,9 +1038,10 @@ class ATEMGUI(QWidget):
             QWidget { background: #181a1c; color: #d9dcdf; font-size: 12px; }
             QLabel, QCheckBox { background: transparent; }
             QFrame#operatorHeader { background: #0d0f10; border: 1px solid #33383c; border-radius: 7px; }
-            QGroupBox#panel { background: #202326; border: 1px solid #393e42; border-radius: 7px; }
-            QGroupBox { margin-top: 12px; padding: 9px 7px 7px; font-weight: bold; color: #c7cbd0; }
-            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #00dce8; }
+            QFrame#panel { background: #202326; border: 1px solid #393e42; border-radius: 7px; }
+            QToolButton#sectionToggle { text-align: left; background: #202326; color: #00dce8; border: 1px solid #393e42; border-radius: 6px; padding: 7px 10px; font-weight: bold; }
+            QToolButton#sectionToggle:hover { background: #292e31; border-color: #00aab5; }
+            QToolButton#sectionToggle::menu-indicator { image: none; }
             QLabel#brand { color: #f1f2f3; font-size: 20px; font-weight: bold; letter-spacing: 2px; }
             QLabel#subtitle, QLabel#sectionTitle { color: #00dce8; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
             QLineEdit, QSpinBox, QComboBox { background: #101214; border: 1px solid #454a4e; border-radius: 4px; padding: 5px; selection-background-color: #006c76; }
